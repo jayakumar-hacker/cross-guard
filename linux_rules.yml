@@ -1,0 +1,208 @@
+# linux_rules.yml
+# Cross-Guard: Linux Hardening Rule Pack
+# Each rule has: id, title, description, check, fix, severity, tags
+
+rules:
+
+  ###############################################################
+  # 1. FILESYSTEM & KERNEL MODULE HARDENING
+  ###############################################################
+
+  - id: LNX-FS-001
+    title: Disable cramfs filesystem
+    severity: high
+    tags: [filesystem, kernel]
+    description: >
+      cramfs filesystem should not be loaded. It is outdated and insecure.
+    check:
+      type: command
+      cmd: "lsmod | grep cramfs"
+      expect: ""
+    fix:
+      type: bash
+      script: |
+        echo "install cramfs /bin/true" >> /etc/modprobe.d/cramfs.conf
+        rmmod cramfs 2>/dev/null || true
+
+  - id: LNX-FS-002
+    title: Disable freevxfs filesystem
+    severity: high
+    tags: [filesystem, kernel]
+    description: Disable freevxfs kernel module.
+    check:
+      type: command
+      cmd: "lsmod | grep freevxfs"
+      expect: ""
+    fix:
+      type: bash
+      script: |
+        echo "install freevxfs /bin/true" >> /etc/modprobe.d/freevxfs.conf
+        rmmod freevxfs 2>/dev/null || true
+
+  - id: LNX-FS-003
+    title: Disable hfs filesystem
+    severity: medium
+    tags: [filesystem, kernel]
+    check:
+      type: command
+      cmd: "lsmod | grep hfs"
+      expect: ""
+    fix:
+      type: bash
+      script: |
+        echo "install hfs /bin/true" >> /etc/modprobe.d/hfs.conf
+        rmmod hfs 2>/dev/null || true
+
+  - id: LNX-FS-004
+    title: Disable hfsplus filesystem
+    severity: medium
+    tags: [filesystem, kernel]
+    check:
+      type: command
+      cmd: "lsmod | grep hfsplus"
+      expect: ""
+    fix:
+      type: bash
+      script: |
+        echo "install hfsplus /bin/true" >> /etc/modprobe.d/hfsplus.conf
+        rmmod hfsplus 2>/dev/null || true
+
+  - id: LNX-FS-005
+    title: Disable udf filesystem
+    severity: medium
+    check:
+      type: command
+      cmd: "lsmod | grep udf"
+      expect: ""
+    fix:
+      type: bash
+      script: |
+        echo "install udf /bin/true" >> /etc/modprobe.d/udf.conf
+        rmmod udf 2>/dev/null || true
+
+  ###############################################################
+  # 2. SSH HARDENING
+  ###############################################################
+
+  - id: LNX-SSH-001
+    title: Disable root SSH login
+    severity: high
+    tags: [ssh, authentication]
+    check:
+      type: file_contains
+      file: "/etc/ssh/sshd_config"
+      regex: "^PermitRootLogin no"
+    fix:
+      type: bash
+      script: |
+        sed -i 's/^PermitRootLogin .*/PermitRootLogin no/' /etc/ssh/sshd_config
+        systemctl restart sshd
+
+  - id: LNX-SSH-002
+    title: Disable password authentication
+    severity: high
+    tags: [ssh]
+    check:
+      type: file_contains
+      file: "/etc/ssh/sshd_config"
+      regex: "^PasswordAuthentication no"
+    fix:
+      type: bash
+      script: |
+        sed -i 's/^PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
+        systemctl restart sshd
+
+  ###############################################################
+  # 3. USER & PASSWORD POLICIES
+  ###############################################################
+
+  - id: LNX-AUTH-001
+    title: Enforce strong password policy
+    severity: high
+    tags: [auth, pam]
+    check:
+      type: file_contains
+      file: "/etc/pam.d/common-password"
+      regex: "pam_pwquality.so"
+    fix:
+      type: bash
+      script: |
+        if ! grep -q "pam_pwquality.so" /etc/pam.d/common-password; then
+          echo "password required pam_pwquality.so retry=3 minlen=12 difok=3" >> /etc/pam.d/common-password
+        fi
+
+  - id: LNX-AUTH-002
+    title: Lock inactive accounts after 30 days
+    severity: medium
+    tags: [auth]
+    check:
+      type: command
+      cmd: "useradd -D | grep INACTIVE"
+      expect: "INACTIVE=30"
+    fix:
+      type: bash
+      script: |
+        useradd -D -f 30
+
+  ###############################################################
+  # 4. NETWORK HARDENING
+  ###############################################################
+
+  - id: LNX-NET-001
+    title: Disable IP forwarding
+    severity: high
+    tags: [network, sysctl]
+    check:
+      type: file_contains
+      file: "/etc/sysctl.conf"
+      regex: "^net.ipv4.ip_forward=0"
+    fix:
+      type: bash
+      script: |
+        echo "net.ipv4.ip_forward=0" >> /etc/sysctl.conf
+        sysctl -w net.ipv4.ip_forward=0
+
+  - id: LNX-NET-002
+    title: Disable IPv6 if not required
+    severity: medium
+    tags: [network]
+    check:
+      type: command
+      cmd: "sysctl net.ipv6.conf.all.disable_ipv6"
+      expect: "1"
+    fix:
+      type: bash
+      script: |
+        echo "net.ipv6.conf.all.disable_ipv6=1" >> /etc/sysctl.conf
+        sysctl -w net.ipv6.conf.all.disable_ipv6=1
+
+  ###############################################################
+  # 5. AUDITD HARDENING
+  ###############################################################
+
+  - id: LNX-AUDIT-001
+    title: Ensure auditd is installed and running
+    severity: high
+    check:
+      type: command
+      cmd: "systemctl is-active auditd"
+      expect: "active"
+    fix:
+      type: bash
+      script: |
+        apt install auditd -y
+        systemctl enable --now auditd
+
+  - id: LNX-AUDIT-002
+    title: Enable audit of sudo usage
+    severity: high
+    check:
+      type: file_contains
+      file: "/etc/audit/rules.d/audit.rules"
+      regex: "-w /var/log/sudo.log -p wa"
+    fix:
+      type: bash
+      script: |
+        echo "-w /var/log/sudo.log -p wa -k sudo" >> /etc/audit/rules.d/audit.rules
+        augenrules
+        systemctl restart auditd
