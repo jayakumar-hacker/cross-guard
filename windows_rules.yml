@@ -1,0 +1,239 @@
+# windows_rules.yml
+# Cross-Guard: Windows Hardening Rule Pack
+# For each rule: id, title, description, severity, check, fix, tags
+
+rules:
+
+  ####################################################################
+  # 1. WINDOWS SERVICES HARDENING
+  ####################################################################
+
+  - id: WIN-SVC-001
+    title: Disable Remote Registry service
+    severity: high
+    tags: [services, remote]
+    description: Remote Registry should be disabled to prevent remote tampering.
+    check:
+      type: powershell
+      cmd: "(Get-Service RemoteRegistry).Status"
+      expect: "Stopped"
+    fix:
+      type: powershell
+      script: |
+        Stop-Service RemoteRegistry -Force
+        Set-Service RemoteRegistry -StartupType Disabled
+
+  - id: WIN-SVC-002
+    title: Disable SMBv1 Protocol
+    severity: critical
+    tags: [smb, network]
+    description: SMBv1 is insecure and should be disabled.
+    check:
+      type: powershell
+      cmd: "(Get-WindowsOptionalFeature -Online -FeatureName SMB1Protocol).State"
+      expect: "Disabled"
+    fix:
+      type: powershell
+      script: |
+        Disable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -NoRestart
+
+  - id: WIN-SVC-003
+    title: Ensure Windows Firewall is enabled for all profiles
+    severity: high
+    tags: [firewall]
+    check:
+      type: powershell
+      cmd: "(Get-NetFirewallProfile | Where-Object {$_.Enabled -eq 0}).Count"
+      expect: "0"
+    fix:
+      type: powershell
+      script: |
+        Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True
+
+  ####################################################################
+  # 2. ACCOUNT & AUTHENTICATION HARDENING
+  ####################################################################
+
+  - id: WIN-AUTH-001
+    title: Enforce password complexity
+    severity: high
+    tags: [policy, password]
+    check:
+      type: powershell
+      cmd: "(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa').PasswordComplexity"
+      expect: "1"
+    fix:
+      type: powershell
+      script: |
+        Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa" `
+          -Name "PasswordComplexity" -Value 1
+
+  - id: WIN-AUTH-002
+    title: Set minimum password length to 12
+    severity: medium
+    tags: [password]
+    check:
+      type: powershell
+      cmd: "(net accounts | Select-String 'Minimum password length').ToString().Split(':')[1].Trim()"
+      expect: "12"
+    fix:
+      type: powershell
+      script: |
+        net accounts /minpwlen:12
+
+  - id: WIN-AUTH-003
+    title: Disable Guest account
+    severity: high
+    tags: [accounts]
+    check:
+      type: powershell
+      cmd: "(Get-LocalUser -Name 'Guest').Enabled"
+      expect: "False"
+    fix:
+      type: powershell
+      script: |
+        Disable-LocalUser -Name "Guest"
+
+  ####################################################################
+  # 3. REMOTE ACCESS & NETWORK SECURITY
+  ####################################################################
+
+  - id: WIN-RDP-001
+    title: Disable RDP if not required
+    severity: high
+    tags: [rdp]
+    description: RDP should be disabled if not explicitly needed.
+    check:
+      type: powershell
+      cmd: "(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server').fDenyTSConnections"
+      expect: "1"
+    fix:
+      type: powershell
+      script: |
+        Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server" `
+          -Name "fDenyTSConnections" -Value 1
+
+  - id: WIN-RDP-002
+    title: Enforce Network Level Authentication (NLA)
+    severity: high
+    tags: [rdp]
+    check:
+      type: powershell
+      cmd: "(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp').UserAuthentication"
+      expect: "1"
+    fix:
+      type: powershell
+      script: |
+        Set-ItemProperty -Path `
+          "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp" `
+          -Name "UserAuthentication" -Value 1
+
+  ####################################################################
+  # 4. AUDIT & LOGGING POLICIES
+  ####################################################################
+
+  - id: WIN-AUDIT-001
+    title: Enable auditing of logon events
+    severity: high
+    tags: [audit]
+    check:
+      type: powershell
+      cmd: "(auditpol /get /category:'Logon/Logoff' | Select-String 'Success').ToString().Split()[1]"
+      expect: "Enable"
+    fix:
+      type: powershell
+      script: |
+        auditpol /set /subcategory:"Logon" /success:enable /failure:enable
+
+  - id: WIN-AUDIT-002
+    title: Enable auditing of object access
+    severity: medium
+    check:
+      type: powershell
+      cmd: "(auditpol /get /subcategory:'File System' | Select-String 'Success').ToString().Split()[1]"
+      expect: "Enable"
+    fix:
+      type: powershell
+      script: |
+        auditpol /set /subcategory:"File System" /success:enable /failure:enable
+
+  ####################################################################
+  # 5. WINDOWS DEFENDER SECURITY
+  ####################################################################
+
+  - id: WIN-DEF-001
+    title: Ensure Windows Defender real-time protection is enabled
+    severity: high
+    tags: [defender, antivirus]
+    check:
+      type: powershell
+      cmd: "(Get-MpPreference).DisableRealtimeMonitoring"
+      expect: "False"
+    fix:
+      type: powershell
+      script: |
+        Set-MpPreference -DisableRealtimeMonitoring $false
+
+  - id: WIN-DEF-002
+    title: Block potentially unwanted applications (PUA)
+    severity: medium
+    tags: [defender, protection]
+    check:
+      type: powershell
+      cmd: "(Get-MpPreference).PUAProtection"
+      expect: "1"
+    fix:
+      type: powershell
+      script: |
+        Set-MpPreference -PUAProtection Enabled
+
+  ####################################################################
+  # 6. WINDOWS REGISTRY HARDENING
+  ####################################################################
+
+  - id: WIN-REG-001
+    title: Disable LM hash storage
+    severity: high
+    tags: [registry, authentication]
+    check:
+      type: powershell
+      cmd: "(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa').NoLMHash"
+      expect: "1"
+    fix:
+      type: powershell
+      script: |
+        Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa" `
+          -Name "NoLMHash" -Value 1
+
+  - id: WIN-REG-002
+    title: Disable anonymous SID enumeration
+    severity: high
+    tags: [registry]
+    check:
+      type: powershell
+      cmd: "(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa').RestrictAnonymousSAM"
+      expect: "1"
+    fix:
+      type: powershell
+      script: |
+        Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa" `
+          -Name "RestrictAnonymousSAM" -Value 1
+
+  ####################################################################
+  # 7. WINDOWS UPDATE POLICY
+  ####################################################################
+
+  - id: WIN-UPD-001
+    title: Ensure automatic updates are enabled
+    severity: medium
+    tags: [updates]
+    check:
+      type: powershell
+      cmd: "(Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update').AUOptions"
+      expect: "4"
+    fix:
+      type: powershell
+      script: |
+        Set-ItemProperty -Path `
+          "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update" `
+          -Name "AUOptions" -Value 4
