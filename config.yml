@@ -1,0 +1,58 @@
+app:
+  name: "Cross-Guard"
+  version: "1.0"
+  author: "Your Team Name"
+  mode: "audit"          # audit | harden | auto-fix
+
+logging:
+  level: "INFO"          # DEBUG | INFO | WARNING | ERROR
+  output_file: "logs/crossguard.log"
+
+report:
+  format: "json"         # json | html | txt
+  output_path: "reports/"
+  include_timestamp: true
+
+system_detection:
+  auto_detect_os: true   # true = detect OS, false = manually specify
+  override_os: ""        # linux | windows (only used when auto_detect_os = false)
+
+rulepacks:
+  linux_rules: "rules/linux_rules.yml"
+  windows_rules: "rules/windows_rules.yml"
+
+executor:
+  linux:
+    runner: "runner_linux.py"
+    bash_path: "/bin/bash"
+    require_sudo: true
+
+  windows:
+    runner: "runner_windows.py"
+    powershell_path: "powershell.exe"
+    execution_policy: "Bypass"
+
+security:
+  enforce_safe_mode: true      # prevents dangerous commands by mistake
+  allowed_commands:
+    - "chown"
+    - "chmod"
+    - "ufw"
+    - "sysctl"
+    - "auditctl"
+    - "pwsh"
+    - "powershell"
+    - "reg"
+    - "Get-Item"
+    - "Set-Item"
+
+report_metadata:
+  include_os_info: true
+  include_rulepack_name: true
+  include_execution_time: true
+
+paths:
+  temp_dir: "temp/"
+  scripts_dir: "scripts/"
+  windows_scripts: "scripts/windows/"
+  linux_scripts: "scripts/linux/"
