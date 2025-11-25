@@ -79,32 +79,50 @@ def run_command(cmd, shell=True, capture_output=True, timeout=120):
 
 def load_rules_from_path(rules_root):
     """
-    Walk rules_root and load YAML files. Supports files with top-level 'rules' list
-    or plain list in the file.
-    Returns list of rule dicts.
+    Enhanced rule loader:
+    - Accepts top-level {rules: [...]}
+    - Accepts a flat list YAML:  [ {...}, {...} ]
+    - Accepts a single rule file (dict, not inside list)
+    - Accepts multiple rule objects in one YAML separated by '---'
     """
     rules = []
+
     for root, dirs, files in os.walk(rules_root):
         for f in files:
             if not (f.endswith(".yml") or f.endswith(".yaml")):
                 continue
+
             path = os.path.join(root, f)
             try:
                 with open(path, "r", encoding="utf-8") as fh:
-                    doc = yaml.safe_load(fh)
+                    docs = list(yaml.safe_load_all(fh))  # supports multi-doc YAML
+
+                for doc in docs:
                     if not doc:
                         continue
-                    # flexibility: accept {rules: [...]} or direct list
+
+                    # Case 1: {rules: [...]}
                     if isinstance(doc, dict) and "rules" in doc and isinstance(doc["rules"], list):
                         rules.extend(doc["rules"])
-                    elif isinstance(doc, list):
+                        continue
+
+                    # Case 2: a list of rule objects
+                    if isinstance(doc, list):
                         rules.extend(doc)
-                    else:
-                        # single rule object
+                        continue
+
+                    # Case 3: a single rule object
+                    if isinstance(doc, dict):
                         rules.append(doc)
+                        continue
+
+                    print(f"[WARN] Unsupported YAML structure in {path}")
+
             except Exception as e:
                 print(f"[WARN] Failed to load {path}: {e}", file=sys.stderr)
+
     return rules
+
 
 # -------------------------
 # Check executors
